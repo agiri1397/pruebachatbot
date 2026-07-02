@@ -3,7 +3,10 @@ namespace ChatbotDocs.Api.Models;
 public enum DocumentCategory
 {
     Uploaded,
-    Generated
+    Generated,
+
+    /// <summary>Documento colocado manualmente en la carpeta fija del servidor (ver DocumentSync).</summary>
+    SourceFolder
 }
 
 public class DocumentDto
@@ -47,4 +50,21 @@ public class GenerateDocumentResponse
     public string Content { get; set; } = string.Empty;
 
     public bool EmbeddedInWorkspace { get; set; }
+}
+
+/// <summary>Resultado de sincronizar la carpeta fija de documentos del servidor con el workspace de AnythingLLM.</summary>
+public class DocumentSyncResponse
+{
+    public IReadOnlyList<string> NewlyEmbedded { get; set; } = Array.Empty<string>();
+
+    public IReadOnlyList<string> AlreadyEmbedded { get; set; } = Array.Empty<string>();
+
+    public IReadOnlyList<DocumentSyncErrorDto> Errors { get; set; } = Array.Empty<DocumentSyncErrorDto>();
+}
+
+public class DocumentSyncErrorDto
+{
+    public string FileName { get; set; } = string.Empty;
+
+    public string Error { get; set; } = string.Empty;
 }

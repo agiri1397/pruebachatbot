@@ -8,6 +8,8 @@ const string AngularCorsPolicy = "AngularClient";
 
 builder.Services.Configure<AnythingLlmOptions>(
     builder.Configuration.GetSection(AnythingLlmOptions.SectionName));
+builder.Services.Configure<DocumentSyncOptions>(
+    builder.Configuration.GetSection(DocumentSyncOptions.SectionName));
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -36,6 +38,8 @@ builder.Services.AddHttpClient<IAnythingLlmClient, AnythingLlmClient>((servicePr
     }
 });
 
+builder.Services.AddScoped<IDocumentSyncService, DocumentSyncService>();
+
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
     ?? new[] { "http://localhost:4200" };
 
@@ -60,5 +64,29 @@ if (app.Environment.IsDevelopment())
 app.UseCors(AngularCorsPolicy);
 app.UseAuthorization();
 app.MapControllers();
+
+var documentSyncOptions = builder.Configuration.GetSection(DocumentSyncOptions.SectionName).Get<DocumentSyncOptions>()
+    ?? new DocumentSyncOptions();
+
+if (documentSyncOptions.AutoSyncOnStartup)
+{
+    using var startupScope = app.Services.CreateScope();
+    var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+
+    try
+    {
+        var syncService = startupScope.ServiceProvider.GetRequiredService<IDocumentSyncService>();
+        var result = await syncService.SyncAsync(CancellationToken.None);
+        startupLogger.LogInformation(
+            "Sincronización inicial de documentos: {New} nuevos, {Already} ya embebidos, {Errors} con error.",
+            result.NewlyEmbedded.Count, result.AlreadyEmbedded.Count, result.Errors.Count);
+    }
+    catch (Exception ex)
+    {
+        startupLogger.LogWarning(ex,
+            "No se pudo sincronizar la carpeta de documentos al iniciar (probablemente AnythingLLM no está " +
+            "disponible todavía). Usa POST /api/documents/sync para reintentar manualmente.");
+    }
+}
 
 app.Run();

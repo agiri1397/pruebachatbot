@@ -84,6 +84,16 @@ public class AnythingLlmClient : IAnythingLlmClient
         await EnsureSuccessAsync(response, "No se pudo embeber el documento en el workspace", cancellationToken);
     }
 
+    public async Task PinDocumentAsync(string documentLocation, CancellationToken cancellationToken)
+    {
+        var body = new AnythingLlmUpdatePinRequestBody { DocPath = documentLocation, PinStatus = true };
+
+        using var response = await _httpClient.PostAsJsonAsync(
+            $"/api/v1/workspace/{_options.WorkspaceSlug}/update-pin", body, cancellationToken);
+
+        await EnsureSuccessAsync(response, "No se pudo fijar (pin) el documento en el workspace", cancellationToken);
+    }
+
     public async Task<IReadOnlySet<string>> ListKnownDocumentTitlesAsync(CancellationToken cancellationToken)
     {
         using var response = await _httpClient.GetAsync("/api/v1/documents", cancellationToken);

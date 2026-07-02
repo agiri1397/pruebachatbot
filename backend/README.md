@@ -5,7 +5,11 @@ Backend de ejemplo en **.NET 8 Web API** que sirve de puente entre un frontend
 embeddings. Permite:
 
 - Chatear haciendo preguntas sobre documentos ya cargados en el servidor.
-- Subir documentos nuevos y dejarlos listos para ser consultados.
+- Colocar documentos en una **carpeta fija del servidor** (`Documentos/`) y que
+  se sincronicen automáticamente para poder cruzarlos en una sola respuesta
+  (p. ej. "según el marco legal y los formularios ingresados, ¿la
+  municipalidad está preparada para una asociación público-privada?").
+- Subir documentos nuevos por API y dejarlos listos para ser consultados.
 - Generar documentos nuevos con el modelo y descargarlos.
 
 ```
@@ -82,7 +86,45 @@ si Kestrel elige otro puerto) y expone Swagger en `/swagger` en entorno
 Development. CORS está habilitado para `http://localhost:4200` (Angular dev
 server); puedes añadir más orígenes en `Cors:AllowedOrigins`.
 
-## 5. Endpoints
+## 5. Carpeta fija de documentos (marco legal, formularios, etc.)
+
+Para el caso de uso de "cruzar varios documentos completos en una sola
+respuesta" (ej. marco legal + formularios ingresados), no hace falta subir
+archivo por archivo desde el frontend: simplemente colócalos dentro de
+`ChatbotDocs.Api/Documentos/` (puedes organizarlos en subcarpetas libremente,
+por ejemplo `Documentos/MarcoLegal/` y `Documentos/Formularios/` — la
+estructura de carpetas es solo para tu propia organización, todo termina en
+el mismo workspace).
+
+```bash
+mkdir -p backend/ChatbotDocs.Api/Documentos/MarcoLegal
+mkdir -p backend/ChatbotDocs.Api/Documentos/Formularios
+cp ley-municipal.pdf backend/ChatbotDocs.Api/Documentos/MarcoLegal/
+cp formulario-2024.pdf backend/ChatbotDocs.Api/Documentos/Formularios/
+```
+
+Al iniciar (`dotnet run`), el backend escanea esa carpeta automáticamente y,
+por cada archivo nuevo:
+1. Lo sube a AnythingLLM y lo **embebe** (queda buscable por similitud semántica).
+2. Lo **fija ("pin")** en el workspace, para que su contenido completo se
+   incluya en cada respuesta del chat, en vez de depender solo de fragmentos
+   encontrados por búsqueda semántica. Esto es lo que permite que una
+   pregunta como *"según el marco legal y los formularios ingresados, ¿la
+   municipalidad está preparada para una asociación público-privada?"* se
+   responda considerando el contenido íntegro de todos los documentos
+   relevantes, no solo los trozos más parecidos a la pregunta.
+
+Si agregas o quitas archivos de la carpeta mientras el backend ya está
+corriendo, llama a `POST /api/documents/sync` para volver a sincronizar sin
+reiniciar.
+
+> Ten en cuenta que fijar ("pin") muchos documentos grandes hace que cada
+> consulta le mande al modelo todo ese contenido como contexto — si usas un
+> modelo con ventana de contexto chica en Ollama, o tienes decenas de
+> documentos extensos, puede que necesites un modelo con más contexto o
+> reducir cuántos documentos fijas.
+
+## 6. Endpoints
 
 ### `POST /api/chat`
 Envía un mensaje y responde usando el contexto de los documentos embebidos.
@@ -103,8 +145,23 @@ Envía un mensaje y responde usando el contexto de los documentos embebidos.
 - `"chat"`: responde también con conocimiento general del modelo si no hay contexto.
 
 ### `GET /api/documents`
-Lista los documentos que hay en el servidor (subidos y generados), indicando
-si ya están embebidos (disponibles para preguntas) en AnythingLLM.
+Lista los documentos que hay en el servidor (de la carpeta fija, subidos por
+API, y generados), indicando si ya están embebidos (disponibles para
+preguntas) en AnythingLLM.
+
+### `POST /api/documents/sync`
+Vuelve a escanear la carpeta fija (`Documentos/`) y embebe + fija ("pin") los
+archivos nuevos que encuentre. Se ejecuta automáticamente al iniciar el
+backend; llama a este endpoint si agregaste archivos después.
+
+```json
+// Response
+{
+  "newlyEmbedded": ["ley-municipal.pdf", "formulario-2024.pdf"],
+  "alreadyEmbedded": [],
+  "errors": []
+}
+```
 
 ### `POST /api/documents/upload` (multipart/form-data, campo `file`)
 Guarda el archivo en el servidor (`Storage/Uploads`) y lo sube + embebe en el
@@ -138,7 +195,7 @@ acaba de generar.
 ### `GET /api/documents/download/{fileName}`
 Descarga un documento (subido o generado) del servidor.
 
-## 6. Consumo desde Angular
+## 7. Consumo desde Angular
 
 Ejemplo mínimo de servicio Angular (`chat.service.ts`):
 
@@ -175,7 +232,7 @@ export class ChatService {
 }
 ```
 
-## 7. Estructura del proyecto
+## 8. Estructura del proyecto
 
 ```
 backend/
@@ -187,18 +244,27 @@ backend/
     │   └── DocumentsController.cs
     ├── Services/
     │   ├── AnythingLlmClient.cs      # Cliente HTTP hacia la API de AnythingLLM
-    │   └── DocumentStorageService.cs # Documentos guardados en el propio servidor
+    │   ├── DocumentStorageService.cs # Documentos subidos/generados por API
+    │   └── DocumentSyncService.cs    # Escanea Documentos/ y embebe + fija (pin) en AnythingLLM
     ├── Models/                       # DTOs públicos + contratos internos de AnythingLLM
-    ├── Options/AnythingLlmOptions.cs
+    ├── Options/
+    │   ├── AnythingLlmOptions.cs
+    │   └── DocumentSyncOptions.cs
+    ├── Documentos/                   # Carpeta fija: coloca aquí marco legal, formularios, etc.
     ├── Storage/                      # Uploads/ y Generated/ (contenido en runtime, no versionado)
     └── Program.cs
 ```
 
 ## Notas
 
-- Las rutas exactas de la Developer API de AnythingLLM pueden variar entre
-  versiones; verifícalas en `http://localhost:3001/api/docs` (Swagger propio
-  de AnythingLLM) si actualizas la imagen de Docker.
+- Las rutas exactas de la Developer API de AnythingLLM (incluyendo
+  `update-pin`, usada para fijar documentos) pueden variar entre versiones;
+  verifícalas en `http://localhost:3001/api/docs` (Swagger propio de
+  AnythingLLM) si actualizas la imagen de Docker. Si tu versión no soporta
+  `update-pin` vía API, puedes fijar cada documento manualmente desde la
+  interfaz de AnythingLLM (ícono de pin junto al documento dentro del
+  workspace) — el backend seguirá funcionando igual para embeber/buscar,
+  simplemente no automatiza ese último paso.
 - Este backend no implementa autenticación de usuarios (fuera del alcance del
   ejemplo); en un entorno real conviene añadir autenticación/autorización
   antes de exponerlo públicamente.

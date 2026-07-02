@@ -16,24 +16,57 @@ public class DocumentsController : ControllerBase
 
     private readonly IAnythingLlmClient _anythingLlmClient;
     private readonly IDocumentStorageService _documentStorage;
+    private readonly IDocumentSyncService _documentSync;
     private readonly ILogger<DocumentsController> _logger;
 
     public DocumentsController(
         IAnythingLlmClient anythingLlmClient,
         IDocumentStorageService documentStorage,
+        IDocumentSyncService documentSync,
         ILogger<DocumentsController> logger)
     {
         _anythingLlmClient = anythingLlmClient;
         _documentStorage = documentStorage;
+        _documentSync = documentSync;
         _logger = logger;
     }
 
-    /// <summary>Lista los documentos que hay en el servidor, indicando cuáles ya están embebidos (consultables) en AnythingLLM.</summary>
+    /// <summary>
+    /// Lista los documentos que hay en el servidor (subidos por API, generados, y los de la
+    /// carpeta fija), indicando cuáles ya están embebidos (consultables) en AnythingLLM.
+    /// </summary>
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<DocumentDto>>> List(CancellationToken cancellationToken)
     {
         var embeddedTitles = await SafeListKnownTitlesAsync(cancellationToken);
-        return Ok(_documentStorage.ListDocuments(embeddedTitles));
+
+        var documents = _documentStorage.ListDocuments(embeddedTitles)
+            .Concat(_documentSync.ListSourceDocuments(embeddedTitles))
+            .OrderByDescending(doc => doc.CreatedAtUtc)
+            .ToList();
+
+        return Ok(documents);
+    }
+
+    /// <summary>
+    /// Escanea la carpeta fija de documentos del servidor (configurada en DocumentSync:FolderPath,
+    /// por defecto "Documentos") y embebe + fija ("pin") en AnythingLLM los archivos nuevos, para
+    /// que el chat pueda responder preguntas que cruzan el contenido de varios documentos completos
+    /// (p. ej. marco legal + formularios ingresados).
+    /// </summary>
+    [HttpPost("sync")]
+    public async Task<ActionResult<DocumentSyncResponse>> Sync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _documentSync.SyncAsync(cancellationToken);
+            return Ok(result);
+        }
+        catch (AnythingLlmException ex)
+        {
+            _logger.LogError(ex, "Fallo al sincronizar la carpeta de documentos con AnythingLLM");
+            return Problem(title: "No se pudo sincronizar la carpeta de documentos", detail: ex.Message, statusCode: StatusCodes.Status502BadGateway);
+        }
     }
 
     /// <summary>

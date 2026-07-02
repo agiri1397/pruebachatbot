@@ -8,6 +8,11 @@ ChatbotDocs.Api/Storage/Uploads/*
 ChatbotDocs.Api/Storage/Generated/*
 !ChatbotDocs.Api/Storage/Generated/.gitkeep
 
+# Documentos fuente reales (marco legal, formularios, etc.) colocados manualmente:
+# no se versionan, cada entorno pone los suyos.
+ChatbotDocs.Api/Documentos/*
+!ChatbotDocs.Api/Documentos/.gitkeep
+
 # Secretos locales
 appsettings.Local.json
 .env

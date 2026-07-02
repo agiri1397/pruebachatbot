@@ -12,6 +12,12 @@ public interface IAnythingLlmClient
     /// <summary>Embebe (vectoriza) uno o más documentos ya subidos dentro del workspace configurado.</summary>
     Task EmbedDocumentsAsync(IEnumerable<string> documentLocations, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Fija ("pin") un documento en el workspace para que su contenido completo se incluya
+    /// siempre como contexto, sin depender de la búsqueda semántica por fragmentos.
+    /// </summary>
+    Task PinDocumentAsync(string documentLocation, CancellationToken cancellationToken);
+
     /// <summary>Lista los nombres de documentos ya conocidos por AnythingLLM (para saber cuáles están embebidos).</summary>
     Task<IReadOnlySet<string>> ListKnownDocumentTitlesAsync(CancellationToken cancellationToken);
 }

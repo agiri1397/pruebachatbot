@@ -70,6 +70,21 @@ internal sealed class AnythingLlmUpdateEmbeddingsRequestBody
     public List<string> Deletes { get; set; } = new();
 }
 
+/// <summary>
+/// "Pinear" un documento hace que AnythingLLM incluya su contenido COMPLETO en cada
+/// consulta del workspace, en vez de solo los fragmentos más parecidos a la pregunta
+/// (búsqueda semántica). Es lo que permite responder preguntas que requieren razonar
+/// sobre varios documentos completos a la vez (p. ej. cruzar marco legal + formularios).
+/// </summary>
+internal sealed class AnythingLlmUpdatePinRequestBody
+{
+    [JsonPropertyName("docPath")]
+    public string DocPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("pinStatus")]
+    public bool PinStatus { get; set; }
+}
+
 internal sealed class AnythingLlmDocumentsApiResponse
 {
     [JsonPropertyName("localFiles")]
