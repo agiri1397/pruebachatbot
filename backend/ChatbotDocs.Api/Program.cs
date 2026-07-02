@@ -65,27 +65,29 @@ app.UseCors(AngularCorsPolicy);
 app.UseAuthorization();
 app.MapControllers();
 
-var documentSyncOptions = builder.Configuration.GetSection(DocumentSyncOptions.SectionName).Get<DocumentSyncOptions>()
-    ?? new DocumentSyncOptions();
+var documentSyncOptions = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<DocumentSyncOptions>>().Value;
 
 if (documentSyncOptions.AutoSyncOnStartup)
 {
     using var startupScope = app.Services.CreateScope();
     var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+    var syncService = startupScope.ServiceProvider.GetRequiredService<IDocumentSyncService>();
 
-    try
+    foreach (var carpeta in syncService.ListAvailableCarpetas())
     {
-        var syncService = startupScope.ServiceProvider.GetRequiredService<IDocumentSyncService>();
-        var result = await syncService.SyncAsync(CancellationToken.None);
-        startupLogger.LogInformation(
-            "Sincronización inicial de documentos: {New} nuevos, {Already} ya embebidos, {Errors} con error.",
-            result.NewlyEmbedded.Count, result.AlreadyEmbedded.Count, result.Errors.Count);
-    }
-    catch (Exception ex)
-    {
-        startupLogger.LogWarning(ex,
-            "No se pudo sincronizar la carpeta de documentos al iniciar (probablemente AnythingLLM no está " +
-            "disponible todavía). Usa POST /api/documents/sync para reintentar manualmente.");
+        try
+        {
+            var result = await syncService.SyncAsync(carpeta, CancellationToken.None);
+            startupLogger.LogInformation(
+                "Sincronización inicial del caso '{Carpeta}': {New} nuevos, {Already} ya embebidos, {Errors} con error.",
+                carpeta, result.NewlyEmbedded.Count, result.AlreadyEmbedded.Count, result.Errors.Count);
+        }
+        catch (Exception ex)
+        {
+            startupLogger.LogWarning(ex,
+                "No se pudo sincronizar el caso '{Carpeta}' al iniciar (probablemente AnythingLLM no está " +
+                "disponible todavía). Usa POST /api/documents/{{carpeta}}/sync para reintentar manualmente.", carpeta);
+        }
     }
 }
 

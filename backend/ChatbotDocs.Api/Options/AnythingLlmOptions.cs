@@ -7,8 +7,4 @@ public class AnythingLlmOptions
     public string BaseUrl { get; set; } = "http://localhost:3001";
 
     public string ApiKey { get; set; } = string.Empty;
-
-    public string WorkspaceSlug { get; set; } = string.Empty;
-
-    public string DocumentFolder { get; set; } = "custom-documents";
 }

@@ -18,11 +18,12 @@ public class ChatController : ControllerBase
     }
 
     /// <summary>
-    /// Envía un mensaje al workspace de AnythingLLM (que a su vez usa Ollama) y devuelve
-    /// la respuesta junto con los fragmentos de los documentos usados como contexto.
+    /// Envía un mensaje al caso/carpeta indicado. Cada carpeta vive en su propio workspace de
+    /// AnythingLLM (creado automáticamente la primera vez que se usa), aislado del resto de los
+    /// casos, y responde usando el contexto de los documentos de esa carpeta.
     /// </summary>
-    [HttpPost]
-    public async Task<ActionResult<ChatResponse>> Chat([FromBody] ChatRequest request, CancellationToken cancellationToken)
+    [HttpPost("{carpeta}")]
+    public async Task<ActionResult<ChatResponse>> Chat(string carpeta, [FromBody] ChatRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Message))
         {
@@ -31,14 +32,18 @@ public class ChatController : ControllerBase
 
         try
         {
-            var response = await _anythingLlmClient.ChatAsync(
-                request.Message, request.Mode, request.ThreadSlug, cancellationToken);
+            var workspaceSlug = await _anythingLlmClient.EnsureWorkspaceAsync(SlugHelper.Sanitize(carpeta), cancellationToken);
+            var response = await _anythingLlmClient.ChatAsync(workspaceSlug, request.Message, request.Mode, request.ThreadSlug, cancellationToken);
 
             return Ok(response);
         }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
         catch (AnythingLlmException ex)
         {
-            _logger.LogError(ex, "Fallo al consultar a AnythingLLM");
+            _logger.LogError(ex, "Fallo al consultar a AnythingLLM para el caso {Carpeta}", carpeta);
             return Problem(title: "El servicio de chat no está disponible", detail: ex.Message, statusCode: StatusCodes.Status502BadGateway);
         }
     }

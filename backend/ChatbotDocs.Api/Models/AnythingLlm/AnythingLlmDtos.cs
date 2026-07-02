@@ -85,31 +85,60 @@ internal sealed class AnythingLlmUpdatePinRequestBody
     public bool PinStatus { get; set; }
 }
 
-internal sealed class AnythingLlmDocumentsApiResponse
+/// <summary>Resumen de un workspace, tal como aparece en /api/v1/workspaces y en la respuesta de /api/v1/workspace/new.</summary>
+internal sealed class AnythingLlmWorkspaceSummary
 {
-    [JsonPropertyName("localFiles")]
-    public AnythingLlmLocalFilesNode? LocalFiles { get; set; }
-}
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
 
-internal sealed class AnythingLlmLocalFilesNode
-{
-    [JsonPropertyName("items")]
-    public List<AnythingLlmFolderNode>? Items { get; set; }
-}
-
-internal sealed class AnythingLlmFolderNode
-{
     [JsonPropertyName("name")]
     public string? Name { get; set; }
 
-    [JsonPropertyName("items")]
-    public List<AnythingLlmDocumentNode>? Items { get; set; }
+    [JsonPropertyName("slug")]
+    public string? Slug { get; set; }
 }
 
-internal sealed class AnythingLlmDocumentNode
+internal sealed class AnythingLlmWorkspacesListResponse
+{
+    [JsonPropertyName("workspaces")]
+    public List<AnythingLlmWorkspaceSummary>? Workspaces { get; set; }
+}
+
+internal sealed class AnythingLlmCreateWorkspaceRequestBody
 {
     [JsonPropertyName("name")]
-    public string? Name { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+
+internal sealed class AnythingLlmCreateWorkspaceResponse
+{
+    [JsonPropertyName("workspace")]
+    public AnythingLlmWorkspaceSummary? Workspace { get; set; }
+}
+
+/// <summary>Detalle de un workspace (GET /api/v1/workspace/{slug}), incluye sus documentos embebidos.</summary>
+internal sealed class AnythingLlmWorkspaceDetailsResponse
+{
+    [JsonPropertyName("workspace")]
+    public List<AnythingLlmWorkspaceDetail>? Workspace { get; set; }
+}
+
+internal sealed class AnythingLlmWorkspaceDetail
+{
+    [JsonPropertyName("slug")]
+    public string? Slug { get; set; }
+
+    [JsonPropertyName("documents")]
+    public List<AnythingLlmWorkspaceDocument>? Documents { get; set; }
+}
+
+internal sealed class AnythingLlmWorkspaceDocument
+{
+    [JsonPropertyName("docpath")]
+    public string? DocPath { get; set; }
+
+    [JsonPropertyName("filename")]
+    public string? Filename { get; set; }
 
     [JsonPropertyName("title")]
     public string? Title { get; set; }

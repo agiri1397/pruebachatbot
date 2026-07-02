@@ -2,34 +2,53 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using ChatbotDocs.Api.Models;
 using ChatbotDocs.Api.Models.AnythingLlm;
-using ChatbotDocs.Api.Options;
-using Microsoft.Extensions.Options;
 
 namespace ChatbotDocs.Api.Services;
 
 /// <summary>
 /// Envuelve la Developer API de AnythingLLM (http://localhost:3001/api/docs).
 /// AnythingLLM es quien habla directamente con Ollama para embeddings y generación;
-/// este cliente solo orquesta chat, subida de documentos y su vectorización.
+/// este cliente solo orquesta workspaces, chat, subida de documentos y su vectorización.
+/// Cada "carpeta/caso" del backend se mapea 1:1 a un workspace de AnythingLLM, para que
+/// sus documentos nunca se mezclen con los de otro caso.
 /// </summary>
 public class AnythingLlmClient : IAnythingLlmClient
 {
     private readonly HttpClient _httpClient;
-    private readonly AnythingLlmOptions _options;
     private readonly ILogger<AnythingLlmClient> _logger;
 
-    public AnythingLlmClient(HttpClient httpClient, IOptions<AnythingLlmOptions> options, ILogger<AnythingLlmClient> logger)
+    public AnythingLlmClient(HttpClient httpClient, ILogger<AnythingLlmClient> logger)
     {
         _httpClient = httpClient;
-        _options = options.Value;
         _logger = logger;
     }
 
-    public async Task<ChatResponse> ChatAsync(string message, string mode, string? threadSlug, CancellationToken cancellationToken)
+    public async Task<string> EnsureWorkspaceAsync(string desiredSlug, CancellationToken cancellationToken)
+    {
+        using var listResponse = await _httpClient.GetAsync("/api/v1/workspaces", cancellationToken);
+        await EnsureSuccessAsync(listResponse, "No se pudo listar los workspaces de AnythingLLM", cancellationToken);
+
+        var list = await listResponse.Content.ReadFromJsonAsync<AnythingLlmWorkspacesListResponse>(cancellationToken: cancellationToken);
+        var existing = list?.Workspaces?.FirstOrDefault(w => string.Equals(w.Slug, desiredSlug, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrEmpty(existing?.Slug))
+        {
+            return existing.Slug;
+        }
+
+        var createBody = new AnythingLlmCreateWorkspaceRequestBody { Name = desiredSlug };
+        using var createResponse = await _httpClient.PostAsJsonAsync("/api/v1/workspace/new", createBody, cancellationToken);
+        await EnsureSuccessAsync(createResponse, "No se pudo crear el workspace en AnythingLLM", cancellationToken);
+
+        var created = await createResponse.Content.ReadFromJsonAsync<AnythingLlmCreateWorkspaceResponse>(cancellationToken: cancellationToken);
+        return created?.Workspace?.Slug
+            ?? throw new AnythingLlmException("AnythingLLM no devolvió el slug del workspace creado.");
+    }
+
+    public async Task<ChatResponse> ChatAsync(string workspaceSlug, string message, string mode, string? threadSlug, CancellationToken cancellationToken)
     {
         var path = string.IsNullOrWhiteSpace(threadSlug)
-            ? $"/api/v1/workspace/{_options.WorkspaceSlug}/chat"
-            : $"/api/v1/workspace/{_options.WorkspaceSlug}/thread/{threadSlug}/chat";
+            ? $"/api/v1/workspace/{workspaceSlug}/chat"
+            : $"/api/v1/workspace/{workspaceSlug}/thread/{threadSlug}/chat";
 
         var body = new AnythingLlmChatRequestBody { Message = message, Mode = mode };
 
@@ -74,36 +93,36 @@ public class AnythingLlmClient : IAnythingLlmClient
             ?? throw new AnythingLlmException("AnythingLLM no devolvió la ubicación del documento subido.");
     }
 
-    public async Task EmbedDocumentsAsync(IEnumerable<string> documentLocations, CancellationToken cancellationToken)
+    public async Task EmbedDocumentsAsync(string workspaceSlug, IEnumerable<string> documentLocations, CancellationToken cancellationToken)
     {
         var body = new AnythingLlmUpdateEmbeddingsRequestBody { Adds = documentLocations.ToList() };
 
         using var response = await _httpClient.PostAsJsonAsync(
-            $"/api/v1/workspace/{_options.WorkspaceSlug}/update-embeddings", body, cancellationToken);
+            $"/api/v1/workspace/{workspaceSlug}/update-embeddings", body, cancellationToken);
 
         await EnsureSuccessAsync(response, "No se pudo embeber el documento en el workspace", cancellationToken);
     }
 
-    public async Task PinDocumentAsync(string documentLocation, CancellationToken cancellationToken)
+    public async Task PinDocumentAsync(string workspaceSlug, string documentLocation, CancellationToken cancellationToken)
     {
         var body = new AnythingLlmUpdatePinRequestBody { DocPath = documentLocation, PinStatus = true };
 
         using var response = await _httpClient.PostAsJsonAsync(
-            $"/api/v1/workspace/{_options.WorkspaceSlug}/update-pin", body, cancellationToken);
+            $"/api/v1/workspace/{workspaceSlug}/update-pin", body, cancellationToken);
 
         await EnsureSuccessAsync(response, "No se pudo fijar (pin) el documento en el workspace", cancellationToken);
     }
 
-    public async Task<IReadOnlySet<string>> ListKnownDocumentTitlesAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlySet<string>> ListEmbeddedDocumentTitlesAsync(string workspaceSlug, CancellationToken cancellationToken)
     {
-        using var response = await _httpClient.GetAsync("/api/v1/documents", cancellationToken);
-        await EnsureSuccessAsync(response, "No se pudo listar los documentos de AnythingLLM", cancellationToken);
+        using var response = await _httpClient.GetAsync($"/api/v1/workspace/{workspaceSlug}", cancellationToken);
+        await EnsureSuccessAsync(response, "No se pudo consultar el workspace en AnythingLLM", cancellationToken);
 
-        var result = await response.Content.ReadFromJsonAsync<AnythingLlmDocumentsApiResponse>(cancellationToken: cancellationToken);
+        var result = await response.Content.ReadFromJsonAsync<AnythingLlmWorkspaceDetailsResponse>(cancellationToken: cancellationToken);
 
-        var titles = result?.LocalFiles?.Items?
-            .SelectMany(folder => folder.Items ?? new List<AnythingLlmDocumentNode>())
-            .Select(doc => doc.Title ?? doc.Name ?? string.Empty)
+        var titles = result?.Workspace?
+            .SelectMany(w => w.Documents ?? new List<AnythingLlmWorkspaceDocument>())
+            .Select(doc => doc.Title ?? doc.Filename ?? string.Empty)
             .Where(title => !string.IsNullOrEmpty(title))
             ?? Enumerable.Empty<string>();
 

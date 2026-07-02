@@ -4,11 +4,15 @@ namespace ChatbotDocs.Api.Services;
 
 public interface IDocumentSyncService
 {
-    /// <summary>
-    /// Escanea la carpeta fija de documentos del servidor y embebe + fija ("pin") en AnythingLLM
-    /// los que todavía no estén indexados, para que el chat pueda razonar sobre su contenido completo.
-    /// </summary>
-    Task<DocumentSyncResponse> SyncAsync(CancellationToken cancellationToken);
+    /// <summary>Nombres de las subcarpetas (casos) que existen dentro de la carpeta fija de documentos.</summary>
+    IReadOnlyList<string> ListAvailableCarpetas();
 
-    IReadOnlyList<DocumentDto> ListSourceDocuments(IReadOnlySet<string> embeddedFileNames);
+    /// <summary>
+    /// Escanea Documentos/{carpeta} y embebe + fija ("pin") en el workspace de ese caso los
+    /// archivos que todavía no estén indexados, para que el chat pueda razonar sobre su
+    /// contenido completo.
+    /// </summary>
+    Task<DocumentSyncResponse> SyncAsync(string carpeta, CancellationToken cancellationToken);
+
+    IReadOnlyList<DocumentDto> ListSourceDocuments(string carpeta, IReadOnlySet<string> embeddedFileNames);
 }
