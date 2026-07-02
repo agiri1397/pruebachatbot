@@ -1,0 +1,13 @@
+bin/
+obj/
+*.user
+
+# Documentos subidos/generados en tiempo de ejecución (no versionar contenido real)
+ChatbotDocs.Api/Storage/Uploads/*
+!ChatbotDocs.Api/Storage/Uploads/.gitkeep
+ChatbotDocs.Api/Storage/Generated/*
+!ChatbotDocs.Api/Storage/Generated/.gitkeep
+
+# Secretos locales
+appsettings.Local.json
+.env

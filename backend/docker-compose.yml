@@ -1,0 +1,36 @@
+version: "3.8"
+
+# Levanta Ollama (motor LLM) y AnythingLLM (RAG + gestión de documentos + API)
+# El backend .NET (ChatbotDocs.Api) se ejecuta aparte con `dotnet run` y habla
+# con AnythingLLM por HTTP usando la URL http://localhost:3001.
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+  anythingllm:
+    image: mintplexlabs/anythingllm:latest
+    container_name: anythingllm
+    ports:
+      - "3001:3001"
+    environment:
+      - STORAGE_DIR=/app/server/storage
+      - LLM_PROVIDER=ollama
+      - OLLAMA_BASE_PATH=http://ollama:11434
+      - EMBEDDING_ENGINE=ollama
+      - EMBEDDING_BASE_PATH=http://ollama:11434
+    volumes:
+      - anythingllm_storage:/app/server/storage
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  anythingllm_storage:
